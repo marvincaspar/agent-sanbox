@@ -92,7 +92,7 @@ function start_proxy() {
     docker run -d \
         --rm \
         --name "${proxy_container}" \
-        --volume "${proxy_allowed_domains_file}:/etc/tinyproxy/proxy_allowed_domains.txt:ro" \
+        --volume "${proxy_allowed_domains_file}:/etc/tinyproxy/allowed_domains.txt:ro" \
         "${PI_PROXY_IMAGE}:latest" >/dev/null
 
     echo "Connecting proxy container '${proxy_container}' to network '${network_name}'..." >&2
@@ -241,7 +241,7 @@ function main() {
         '--mount' "type=bind,source=$(pwd),target=$(pwd)"
         '--volume' "${HOME}/.pi/agent:/home/piuser/.pi/agent"
         '--volume' "${HOME}/dotfiles:${HOME}/dotfiles" # Used because .pi and .agent config is symlinked from here to user's home.
-        '--volume' "${HOME}/.agents/skills:/home/piuser/.agents/skills"
+        '--volume' "${HOME}/.agents:/home/piuser/.agents"
         '--volume' "${HOME}/.config/acli:/home/piuser/.config/acli"
         '--volume' "${HOME}/.context-mode:/home/piuser/.pi/context-mode"
         '--volume' "${SCRIPT_HOME}/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro"

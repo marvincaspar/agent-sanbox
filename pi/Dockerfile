@@ -61,7 +61,7 @@ FROM base AS go
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y \
         golang-1.26 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -69,7 +69,7 @@ FROM base AS php8.4
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y \
         php-8.4 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -77,6 +77,6 @@ FROM base AS php8.5
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y \
         php-8.5 php-dom php-mbstring php-xml php-xmlwriter php-simplexml php-curl php-intl php-xmlreader \
     && rm -rf /var/lib/apt/lists/*
