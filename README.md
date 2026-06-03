@@ -11,7 +11,7 @@ Each agent lives in its own directory with a `Dockerfile` and a bash wrapper scr
 3. Runs the selected agent variant with strict security settings (`--cap-drop=ALL`, `--no-new-privileges`)
 4. Bind-mounts the current working directory so the agent can read and edit your files
 
-The Dockerfiles use a multi-stage build based on [Chainguard's Node image](https://images.chainguard.dev/directory/image/node/overview):
+The Dockerfiles use a multi-stage build based on Microsoft's [`devcontainers/typescript-node`](https://mcr.microsoft.com/en-us/artifact/mar/devcontainers/typescript-node) image:
 
 | Tag      | Contents                                         |
 | -------- | ------------------------------------------------ |
@@ -24,30 +24,30 @@ The Dockerfiles use a multi-stage build based on [Chainguard's Node image](https
 
 Containers run as your host UID (non-root), with all Linux capabilities dropped and `no-new-privileges` enforced. Agents cannot install system packages, access the Docker socket, or escape the container via privilege escalation.
 
-Network access is restricted by a proxy sidecar (see [Proxy](#proxy) below). The agent container is placed on an isolated internal Docker network with no direct internet access — all outbound traffic is forced through the proxy.
+Network access can optionally be restricted by a proxy sidecar (see [Proxy](#proxy) below). When `--proxy` is passed, the agent container is placed on an isolated internal Docker network with no direct internet access — all outbound traffic is forced through the proxy. Without `--proxy`, the container has unrestricted internet access.
 
 ### Usage
 
 ```bash
-# Run in the current directory (uses the base image)
-<agent>
+# Run in the current directory (uses the base image, unrestricted network)
+pi
 
 # Run with a specific language runtime
-<agent> --lang go
-<agent> --lang php8.4
-<agent> --lang php8.5
+pi --lang go
+pi --lang php8.4
+pi --lang php8.5
 
 # Rebuild all images and run
-<agent> --build
+pi --build
 
-# Run without network restrictions (unrestricted internet access)
-<agent> --no-proxy
+# Enable the proxy sidecar (restricted network access via allowlist)
+pi --proxy
 
-# Use a custom allowed-domains list
-<agent> --allowed-domains /path/to/allowed_domains.txt
+# Enable the proxy with a custom allowed-domains list
+pi --proxy --allowed-domains /path/to/allowed_domains.txt
 
 # Pass flags directly to the agent
-<agent> -- --help
+pi -- --help
 ```
 
 ---
@@ -80,10 +80,10 @@ To extend the list, add entries to `proxy/allowed_domains.txt` or pass a custom 
 
 ### Bypassing the proxy
 
-Pass `--no-proxy` to skip the sidecar entirely. The agent container will have unrestricted internet access.
+The proxy is opt-in — simply omit `--proxy` and the container runs with unrestricted internet access (the default).
 
 ```bash
-pi --no-proxy
+pi  # no proxy, unrestricted network
 ```
 
 ---

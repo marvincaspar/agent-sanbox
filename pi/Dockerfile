@@ -40,9 +40,11 @@ WORKDIR /home/piuser
 
 # Install extensions
 # https://pi.dev/packages/@sherif-fanous/pi-catppuccin
+RUN pi install npm:@sherif-fanous/pi-catppuccin 
 # https://pi.dev/packages/context-mode
+RUN pi install npm:context-mode 
 # https://pi.dev/packages/pi-subagents
-RUN pi install npm:@sherif-fanous/pi-catppuccin npm:context-mode npm:pi-subagents
+RUN pi install npm:pi-subagents
 
 RUN ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
     && curl -fsSL "https://acli.atlassian.com/linux/latest/acli_linux_${ARCH}/acli" \
