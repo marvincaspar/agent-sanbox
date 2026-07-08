@@ -10,18 +10,16 @@ Runs AI coding agents inside isolated Docker containers. Agents get no root acce
 
 [pi](https://pi.dev) is an AI coding agent that runs in the terminal.
 
-Also mounts `~/.pi/agent` for persistent extensions and auth, `~/.agents/skills` for skills, and forwards API keys and pi-related env vars from the host.
+Mounts `~/.pi/agent` for persistent extensions and auth, `~/.agents/skills` for skills, and forwards API keys and pi-related env vars from the host.
 
-### Installation
+#### Installation
 
 ```bash
 ln -sf "$(pwd)/pi/pi" "/usr/local/bin/pi"
 pi --build
 ```
 
----
-
-## Usage
+#### Usage
 
 ```bash
 # Run in the current directory (uses the base image, unrestricted network)
@@ -47,6 +45,45 @@ pi -- --help
 
 ---
 
+### opencode
+
+[opencode](https://opencode.ai) is an open source AI coding agent that runs in the terminal.
+
+Mounts `~/.config/opencode` for persistent config and sessions, `~/.agents/skills` for skills, and forwards API keys and opencode-related env vars from the host.
+
+#### Installation
+
+```bash
+ln -sf "$(pwd)/opencode/opencode" "/usr/local/bin/opencode"
+opencode --build
+```
+
+#### Usage
+
+```bash
+# Run in the current directory (uses the base image, unrestricted network)
+opencode
+
+# Run with a specific language runtime
+opencode --lang go
+opencode --lang php8.4
+opencode --lang php8.5
+
+# Rebuild all images and run
+opencode --build
+
+# Enable the proxy sidecar (restricted network access via allowlist)
+opencode --proxy
+
+# Enable the proxy with a custom allowed-domains list
+opencode --proxy --allowed-domains /path/to/allowed_domains.txt
+
+# Pass flags directly to the agent
+opencode -- --help
+```
+
+---
+
 ## How it works
 
 Each agent lives in its own directory with a `Dockerfile` and a bash wrapper script. The wrapper:
@@ -56,14 +93,14 @@ Each agent lives in its own directory with a `Dockerfile` and a bash wrapper scr
 3. Runs the selected agent variant with strict security settings (`--cap-drop=ALL`, `--no-new-privileges`)
 4. Bind-mounts the current working directory so the agent can read and edit your files
 
-The Dockerfiles use a multi-stage build based on Microsoft's [`devcontainers/typescript-node`](https://mcr.microsoft.com/en-us/artifact/mar/devcontainers/typescript-node) image:
+The Dockerfiles use a multi-stage build based on Chainguard's [`node:latest-dev`](https://images.chainguard.dev/directory/image/node/overview) image:
 
-| Tag      | Contents                                         |
-| -------- | ------------------------------------------------ |
-| `base`   | Node.js + npm, agent, Git, curl, ca-certificates |
-| `go`     | `base` + Go 1.26                                 |
-| `php8.4` | `base` + PHP 8.4                                 |
-| `php8.5` | `base` + PHP 8.5                                 |
+| Tag      | Contents                                                |
+| -------- | ------------------------------------------------------- |
+| `base`   | Node.js + npm, agent binary, Git, curl, ca-certificates |
+| `go`     | `base` + Go 1.26                                        |
+| `php8.4` | `base` + PHP 8.4                                        |
+| `php8.5` | `base` + PHP 8.5                                        |
 
 ### Security model
 
@@ -80,7 +117,7 @@ The proxy is a [tinyproxy](https://tinyproxy.github.io/) sidecar container that 
 ### How it works
 
 1. **Isolated network** — The wrapper creates a dedicated internal Docker network per run. The agent container joins only this network; it has no direct internet access.
-2. **Proxy sidecar** — A `pi-proxy` container starts on both the internal network and the default bridge (so it can reach the internet). The agent's `HTTP_PROXY` / `HTTPS_PROXY` env vars are set to the proxy's address on the internal network.
+2. **Proxy sidecar** — A `pi-proxy` / `opencode-proxy` container starts on both the internal network and the default bridge (so it can reach the internet). The agent's `HTTP_PROXY` / `HTTPS_PROXY` env vars are set to the proxy's address on the internal network.
 3. **Allowlist filtering** — At startup, `entrypoint.sh` reads `~/.agents/proxy_allowed_domains.txt` and converts each entry into a tinyproxy regex filter rule:
    - `example.com` → exact match (`^example\.com$`)
    - `*.example.com` → domain + all subdomains (`^(.*\.)?example\.com$`)
@@ -93,7 +130,7 @@ The proxy is a [tinyproxy](https://tinyproxy.github.io/) sidecar container that 
 The default allowlist is read from `~/.agents/proxy_allowed_domains.txt`. Example:
 
 ```
-# Allowed domains for the pi agent proxy.
+# Allowed domains for the agent proxy.
 # One entry per line. Wildcards supported: *.example.com
 # Lines starting with # are ignored.
 
@@ -119,7 +156,8 @@ To use a different file, pass `--allowed-domains /path/to/file`.
 The proxy is opt-in — simply omit `--proxy` and the container runs with unrestricted internet access (the default).
 
 ```bash
-pi  # no proxy, unrestricted network
+pi        # no proxy, unrestricted network
+opencode  # no proxy, unrestricted network
 ```
 
 ---
@@ -151,9 +189,11 @@ acli jira auth login --web
 The browser opens automatically. Complete the Atlassian OAuth flow — the callback redirects back to the browser and auth finishes without any manual steps.
 
 **Verify:**
+
 ```bash
 acli jira auth status
 ```
+
 ```
 ✓ Authenticated
   Site: your-org.atlassian.net

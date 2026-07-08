@@ -1,17 +1,14 @@
-FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie AS base
+# Getting newest sha256 digest for cgr.dev/chainguard/node:latest-dev on 2025-05-08:
+# $ docker buildx imagetools inspect cgr.dev/chainguard/node:latest-dev
+FROM cgr.dev/chainguard/node:latest-dev@sha256:f3efcc097ff61373465af43cd173256de01ea297e583ddead9be49efcff823bb AS base
 
 USER root
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
         curl \
         ca-certificates \
-        git \
-    && rm -rf /var/lib/apt/lists/*
+        git
 
-# Install pi globally
-ARG PI_VERSION=0.78.1
-RUN echo "ignore-scripts=true" > ~/.npmrc \
-    && npm install -g "@earendil-works/pi-coding-agent@${PI_VERSION}"
+RUN curl -fsSL https://pi.dev/install.sh | sh
 
 
 # Prepend extension binaries (host-mounted via /pi-agent). Security: binaries
@@ -28,7 +25,7 @@ RUN mkdir -p \
         /home/piuser \
         /pi-agent/npm-global \
     && chmod 1777 /home/piuser \
-    && chmod 1777 /pi-agent /pi-agent/npm-global \
+    && chmod 0777 /pi-agent /pi-agent/npm-global \
     && chmod a+w /etc/passwd \
     && echo "prefix=/pi-agent/npm-global" > /home/piuser/.npmrc \
     && echo "min-release-age=7" >> /home/piuser/.npmrc \
@@ -36,24 +33,37 @@ RUN mkdir -p \
     && echo "allow-git=none" >> /home/piuser/.npmrc
 
 ENV HOME=/home/piuser
+# Use a throw-away build cache so root's npm runs during image build
+# never pollute the runtime cache path /home/piuser/.npm-cache.
+ENV NPM_CONFIG_CACHE=/tmp/npm-build-cache
 WORKDIR /home/piuser
 
 # Install extensions
 # https://pi.dev/packages/@sherif-fanous/pi-catppuccin
-RUN pi install npm:@sherif-fanous/pi-catppuccin 
+RUN pi install npm:@sherif-fanous/pi-catppuccin
+# https://pi.dev/packages/pi-mcp-adapter
+RUN pi install npm:pi-mcp-adapter
 # https://pi.dev/packages/context-mode
-RUN pi install npm:context-mode 
+RUN npm install -g context-mode && pi install npm:context-mode
 # https://pi.dev/packages/pi-subagents
 RUN pi install npm:pi-subagents
+# https://pi.dev/packages/pi-powerline-footer
+RUN pi install npm:pi-powerline-footer
+
+# Make all extension files/dirs writable so any runtime user can upgrade packages.
+RUN chmod -R a+rwX /pi-agent/npm-global
+
+# Switch to the runtime cache path (empty at start; owned by whoever runs first).
+ENV NPM_CONFIG_CACHE=/home/piuser/.npm-cache
+
+# Install Bun (recommended by context-mode for 3-5x sandbox execution speed)
+RUN curl -fsSL https://bun.sh/install | bash \
+    && ln -sf /home/piuser/.bun/bin/bun /usr/local/bin/bun
 
 RUN ARCH="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
     && curl -fsSL "https://acli.atlassian.com/linux/latest/acli_linux_${ARCH}/acli" \
         -o /usr/local/bin/acli \
     && chmod +x /usr/local/bin/acli
-
-# Runtime installs must not reuse a cache populated during image build.
-# Keep the cache in a separate path that starts empty for the runtime UID.
-ENV NPM_CONFIG_CACHE=/home/piuser/.npm-cache
 
 RUN cat >/usr/local/bin/fake-browser <<'EOF'
 #!/usr/bin/env bash
@@ -62,32 +72,26 @@ EOF
 
 RUN chmod +x /usr/local/bin/fake-browser
 
-RUN ln --force --symbolic /usr/local/bin/fake-browser /usr/local/bin/www-browser
-RUN ln --force --symbolic /usr/local/bin/fake-browser /usr/local/bin/x-www-browser
-RUN ln --force --symbolic /usr/local/bin/fake-browser /usr/local/bin/xdg-open
+RUN ln -f -s /usr/local/bin/fake-browser /usr/local/bin/www-browser
+RUN ln -f -s /usr/local/bin/fake-browser /usr/local/bin/x-www-browser
+RUN ln -f -s /usr/local/bin/fake-browser /usr/local/bin/xdg-open
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
 
 FROM base AS go
 
 USER root
-RUN apt-get update \
-    && apt-get install -y \
-        golang-1.26 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache go-1.26
+
 
 FROM base AS php8.4
 
 USER root
-RUN apt-get update \
-    && apt-get install -y \
-        php-8.4 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache php-8.4
+
 
 FROM base AS php8.5
 
 USER root
-RUN apt-get update \
-    && apt-get install -y \
-        php-8.5 php-dom php-mbstring php-xml php-xmlwriter php-simplexml php-curl php-intl php-xmlreader \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache php-8.5

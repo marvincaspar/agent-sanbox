@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Wrapper script to run the pi coding agent inside a hardened Docker container.
+# Wrapper script to run the opencode coding agent inside a hardened Docker container.
 #
 # Features:
 #   - Multi-language targets: base, go, php8.4, php8.5 (--lang)
@@ -10,15 +10,14 @@ set -euo pipefail
 #     with a configurable allowed-domains allowlist (--allowed-domains)
 #   - Isolated internal Docker network when proxy is active
 #   - Hardened container: capabilities dropped, no-new-privileges, private IPC
-#   - Mounts current working directory, ~/.pi/agent, dotai, skills, and
+#   - Mounts current working directory, ~/.config/opencode, ditai, skills, and
 #     ~/.config/acli read-write; entrypoint and xdg-open shim mounted read-only
-#   - Forwards common API keys and pi env-vars from the host environment
-#   - Passes a system prompt informing pi it is running as a non-root Docker user
-#   - Any unrecognised arguments are forwarded verbatim to pi (use '--' to avoid
+#   - Forwards common API keys and opencode env-vars from the host environment
+#   - Any unrecognised arguments are forwarded verbatim to opencode (use '--' to avoid
 #     flag conflicts)
 
-readonly PI_IMAGE='pi-yolo'
-readonly PI_PROXY_IMAGE='pi-proxy'
+readonly OPENCODE_IMAGE='opencode-yolo'
+readonly OPENCODE_PROXY_IMAGE='opencode-proxy'
 readonly LANGS=(base go php8.4 php8.5)
 
 SCRIPT_HOME="$(dirname "$(realpath "$0")")"
@@ -38,8 +37,8 @@ function check_docker() {
 function script_usage() {
     cat << EOF
 Usage:
-    pi [OPTIONS] [PI_ARGS...]
-    pi [OPTIONS] -- [PI_ARGS...]
+    opencode [OPTIONS] [OPENCODE_ARGS...]
+    opencode [OPTIONS] -- [OPENCODE_ARGS...]
 
 Options:
     -h|--help                   Displays this help
@@ -49,27 +48,27 @@ Options:
     --allowed-domains <file>    Path to allowed-domains file
                                 (default: ~/.agents/proxy_allowed_domains.txt)
 
-Any unrecognised options and arguments are forwarded to the pi agent.
-Use '--' to pass flags to pi that would otherwise conflict with this script.
+Any unrecognised options and arguments are forwarded to the opencode agent.
+Use '--' to pass flags to opencode that would otherwise conflict with this script.
 EOF
 }
 
 function build_proxy_image() {
-    echo "Building Docker image: ${PI_PROXY_IMAGE} ..." >&2
+    echo "Building Docker image: ${OPENCODE_PROXY_IMAGE} ..." >&2
     docker buildx build \
         --file "${SCRIPT_HOME}/../proxy/Dockerfile" \
-        --tag "${PI_PROXY_IMAGE}:latest" \
+        --tag "${OPENCODE_PROXY_IMAGE}:latest" \
         "${SCRIPT_HOME}/../proxy" >&2
 }
 
 function build_image() {
-    echo "Building Docker image: ${PI_IMAGE} ..." >&2
+    echo "Building Docker image: ${OPENCODE_IMAGE} ..." >&2
     for target in "${LANGS[@]}"; do
         echo "Building target stage: ${target} ..." >&2
         docker buildx build \
             --file "${SCRIPT_HOME}/Dockerfile" \
             --target "${target}" \
-            --tag "${PI_IMAGE}:${target}" \
+            --tag "${OPENCODE_IMAGE}:${target}" \
             "${SCRIPT_HOME}" >&2
     done
 
@@ -83,7 +82,7 @@ function start_proxy() {
     local proxy_container="$3"
 
     echo "Starting proxy sidecar container '${proxy_container}' on network '${network_name}'..." >&2
-    # Isolated internal network: pi container has no direct internet access.
+    # Isolated internal network: opencode container has no direct internet access.
     docker network create --internal "${network_name}" >/dev/null
 
     echo "Running proxy container '${proxy_container}'..." >&2
@@ -92,10 +91,10 @@ function start_proxy() {
         --rm \
         --name "${proxy_container}" \
         --volume "${proxy_allowed_domains_file}:/etc/tinyproxy/allowed_domains.txt:ro" \
-        "${PI_PROXY_IMAGE}:latest" >/dev/null
+        "${OPENCODE_PROXY_IMAGE}:latest" >/dev/null
 
     echo "Connecting proxy container '${proxy_container}' to network '${network_name}'..." >&2
-    # Connect proxy to the internal network so the pi container can reach it.
+    # Connect proxy to the internal network so the opencode container can reach it.
     docker network connect "${network_name}" "${proxy_container}" >/dev/null
 
     # Wait for tinyproxy to be ready (HEALTHCHECK in Dockerfile drives this).
@@ -154,12 +153,12 @@ function parse_params() {
                 shift
                 ;;
             --)
-                # Everything after -- is forwarded verbatim to pi
-                pi_passthrough+=("$@")
+                # Everything after -- is forwarded verbatim to opencode
+                opencode_passthrough+=("$@")
                 return
                 ;;
             *)
-                pi_passthrough+=("${param}")
+                opencode_passthrough+=("${param}")
                 ;;
         esac
     done
@@ -180,19 +179,19 @@ function main() {
     lang="base"
     proxy_flag=false
     proxy_allowed_domains_file=""
-    pi_passthrough=()
+    opencode_passthrough=()
 
     parse_params "$@"
 
     if [[ "${build}" == true ]]; then
         build_image
     else
-        if ! docker image inspect "${PI_IMAGE}:${lang}" &>/dev/null; then
-            echo "Image '${PI_IMAGE}:${lang}' not found. Building it first..." >&2
+        if ! docker image inspect "${OPENCODE_IMAGE}:${lang}" &>/dev/null; then
+            echo "Image '${OPENCODE_IMAGE}:${lang}' not found. Building it first..." >&2
             build_image
         fi
-        if [[ "${proxy_flag}" == true ]] && ! docker image inspect "${PI_PROXY_IMAGE}:latest" &>/dev/null; then
-            echo "Image '${PI_PROXY_IMAGE}' not found. Building it first..." >&2
+        if [[ "${proxy_flag}" == true ]] && ! docker image inspect "${OPENCODE_PROXY_IMAGE}:latest" &>/dev/null; then
+            echo "Image '${OPENCODE_PROXY_IMAGE}' not found. Building it first..." >&2
             build_proxy_image
         fi
     fi
@@ -202,11 +201,11 @@ function main() {
         exit 1
     fi
 
-    echo "Running pi in Docker container '${PI_IMAGE}' with language target '${lang}'..." >&2
+    echo "Running opencode in Docker container '${OPENCODE_IMAGE}' with language target '${lang}'..." >&2
 
     # Optionally start proxy sidecar and isolated network.
-    local network_name="pi-net-$$"
-    local proxy_container="pi-proxy-$$"
+    local network_name="opencode-net-$$"
+    local proxy_container="opencode-proxy-$$"
 
     if [[ "${proxy_flag}" == true ]]; then
         if [[ -z "${proxy_allowed_domains_file}" ]]; then
@@ -274,21 +273,22 @@ function main() {
         # with other containers or host processes via IPC primitives.
         '--ipc=none'
         '--mount' "type=bind,source=$(pwd),target=$(pwd)"
-        '--volume' "${HOME}/.pi/agent:/home/piuser/.pi/agent"
-        '--volume' "${HOME}/.agents:/home/piuser/.agents"
-        '--volume' "${HOME}/.config/acli:/home/piuser/.config/acli"
-        '--volume' "${HOME}/.context-mode:/home/piuser/.pi/context-mode"
+        '--volume' "${HOME}/.config/opencode:/home/opencodeuser/.config/opencode"
+        '--volume' "${HOME}/.agents:/home/opencodeuser/.agents"
+        '--volume' "${HOME}/.opencode:/home/opencodeuser/.opencode"
+        '--volume' "${HOME}/.config/acli:/home/opencodeuser/.config/acli"
         '--volume' "${SCRIPT_HOME}/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro"
         '--volume' "${URL_PIPE}:/tmp/fake-browser.log"
         '--workdir' "$(pwd)"
-        '--env' "PI_TELEMETRY=${PI_TELEMETRY:-false}"
         '--env' "TERM=${TERM:-xterm-256color}"
         '--env' "COLORTERM=${COLORTERM:-truecolor}"
+        # Disable auto-update inside the container; the image controls the version.
+        '--env' "OPENCODE_DISABLE_AUTOUPDATE=true"
     )
 
-    if [[ "$(pwd)" != "${HOME}/dotai" ]]; then
+    if [[ "$(pwd)" != "${HOME}/ditai" ]]; then
         docker_flags+=(
-            '--volume' "${HOME}/dotai:${HOME}/dotai" # Used because .pi and .agent config is symlinked from here to user's home.
+            '--volume' "${HOME}/ditai:${HOME}/ditai" # Used because config is symlinked from here to user's home.
         )
     fi
 
@@ -308,12 +308,11 @@ function main() {
         )
     fi
 
-    # Forward pi-related env vars and API keys if set on the host.
-    # Auth file (~/.pi/agent/auth.json) takes priority over these if present.
-    local pi_env_vars=(
-        PI_SKIP_VERSION_CHECK
-        PI_CACHE_RETENTION
-        PI_PACKAGE_DIR
+    # Forward opencode-related env vars and API keys if set on the host.
+    # Config file (~/.config/opencode/config.json) takes priority over these if present.
+    local opencode_env_vars=(
+        OPENCODE_CONFIG
+        OPENCODE_CONFIG_DIR
         VISUAL
         EDITOR
         ANTHROPIC_API_KEY
@@ -322,18 +321,12 @@ function main() {
         OPENCODE_API_KEY
     )
     local var
-    for var in "${pi_env_vars[@]}"; do
+    for var in "${opencode_env_vars[@]}"; do
         [[ -n "${!var:-}" ]] && docker_flags+=('--env' "${var}=${!var}")
     done
 
-
-    local pi_args=(
-        '--append-system-prompt'
-        'You are running inside a Docker container as a non-root user. No Docker socket, sudo, or system package installation (apk requires root) is available.'
-    )
-
-    docker run "${docker_flags[@]}" "${PI_IMAGE}:${lang}"  "${pi_args[@]}" \
-        "${pi_passthrough[@]+"${pi_passthrough[@]}"}"
+    docker run "${docker_flags[@]}" "${OPENCODE_IMAGE}:${lang}" \
+        "${opencode_passthrough[@]+"${opencode_passthrough[@]}"}"
 }
 
 main "$@"
